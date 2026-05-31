@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="icon_background">#1C120D</color>
+    <color name="notification_color">#6750A4</color>
+    <string name="app_name">ASTUS Reader</string>
+    <string name="tts_channel_name">ASTUS Reader playback</string>
+    <string name="widget_description">Быстрый запуск ASTUS Reader</string>
+    <string name="widget_subtitle">Открыть библиотеку</string>
+    <style name="Theme.ASTUSReader" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowActionBar">false</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+</resources>

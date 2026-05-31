@@ -1,0 +1,82 @@
+[
+    {
+        "merged": "com.astus.reader.app-debug-67:/mipmap-xxxhdpi_ic_launcher_round.png.flat",
+        "source": "com.astus.reader.app-main-69:/mipmap-xxxhdpi/ic_launcher_round.png"
+    },
+    {
+        "merged": "C:\\Users\\astus\\.gradle\\daemon\\8.13\\com.astus.reader.app-debug-67:\\drawable_ic_stat_reader.xml.flat",
+        "source": "C:\\Users\\astus\\.gradle\\daemon\\8.13\\com.astus.reader.app-main-69:\\drawable\\ic_stat_reader.xml"
+    },
+    {
+        "merged": "C:\\Users\\astus\\.gradle\\daemon\\8.13\\com.astus.reader.app-debug-67:\\xml_astus_reader_widget_info.xml.flat",
+        "source": "C:\\Users\\astus\\.gradle\\daemon\\8.13\\com.astus.reader.app-main-69:\\xml\\astus_reader_widget_info.xml"
+    },
+    {
+        "merged": "com.astus.reader.app-debug-67:/mipmap-anydpi-v26_ic_launcher_round.xml.flat",
+        "source": "com.astus.reader.app-main-69:/mipmap-anydpi-v26/ic_launcher_round.xml"
+    },
+    {
+        "merged": "com.astus.reader.app-debug-67:/mipmap-xxhdpi_ic_launcher_round.png.flat",
+        "source": "com.astus.reader.app-main-69:/mipmap-xxhdpi/ic_launcher_round.png"
+    },
+    {
+        "merged": "com.astus.reader.app-debug-67:/mipmap-hdpi_ic_launcher_round.png.flat",
+        "source": "com.astus.reader.app-main-69:/mipmap-hdpi/ic_launcher_round.png"
+    },
+    {
+        "merged": "com.astus.reader.app-debug-67:/mipmap-xxxhdpi_ic_launcher.png.flat",
+        "source": "com.astus.reader.app-main-69:/mipmap-xxxhdpi/ic_launcher.png"
+    },
+    {
+        "merged": "com.astus.reader.app-debug-67:/mipmap-mdpi_ic_launcher.png.flat",
+        "source": "com.astus.reader.app-main-69:/mipmap-mdpi/ic_launcher.png"
+    },
+    {
+        "merged": "com.astus.reader.app-debug-67:/drawable-nodpi_ic_launcher_foreground.png.flat",
+        "source": "com.astus.reader.app-main-69:/drawable-nodpi/ic_launcher_foreground.png"
+    },
+    {
+        "merged": "com.astus.reader.app-debug-67:/mipmap-anydpi-v26_ic_launcher.xml.flat",
+        "source": "com.astus.reader.app-main-69:/mipmap-anydpi-v26/ic_launcher.xml"
+    },
+    {
+        "merged": "com.astus.reader.app-debug-67:/mipmap-xhdpi_ic_launcher.png.flat",
+        "source": "com.astus.reader.app-main-69:/mipmap-xhdpi/ic_launcher.png"
+    },
+    {
+        "merged": "com.astus.reader.app-debug-67:/mipmap-hdpi_ic_launcher.png.flat",
+        "source": "com.astus.reader.app-main-69:/mipmap-hdpi/ic_launcher.png"
+    },
+    {
+        "merged": "C:\\Users\\astus\\.gradle\\daemon\\8.13\\com.astus.reader.app-debug-67:\\layout_widget_astus_reader.xml.flat",
+        "source": "C:\\Users\\astus\\.gradle\\daemon\\8.13\\com.astus.reader.app-main-69:\\layout\\widget_astus_reader.xml"
+    },
+    {
+        "merged": "com.astus.reader.app-debug-67:/mipmap-xhdpi_ic_launcher_round.png.flat",
+        "source": "com.astus.reader.app-main-69:/mipmap-xhdpi/ic_launcher_round.png"
+    },
+    {
+        "merged": "C:\\Users\\astus\\.gradle\\daemon\\8.13\\com.astus.reader.app-debug-67:\\xml_data_extraction_rules.xml.flat",
+        "source": "C:\\Users\\astus\\.gradle\\daemon\\8.13\\com.astus.reader.app-main-69:\\xml\\data_extraction_rules.xml"
+    },
+    {
+        "merged": "C:\\Users\\astus\\.gradle\\daemon\\8.13\\com.astus.reader.app-debug-67:\\drawable_widget_background.xml.flat",
+        "source": "C:\\Users\\astus\\.gradle\\daemon\\8.13\\com.astus.reader.app-main-69:\\drawable\\widget_background.xml"
+    },
+    {
+        "merged": "com.astus.reader.app-debug-67:/mipmap-xxhdpi_ic_launcher.png.flat",
+        "source": "com.astus.reader.app-main-69:/mipmap-xxhdpi/ic_launcher.png"
+    },
+    {
+        "merged": "C:\\Users\\astus\\.gradle\\daemon\\8.13\\com.astus.reader.app-debug-67:\\xml_backup_rules.xml.flat",
+        "source": "C:\\Users\\astus\\.gradle\\daemon\\8.13\\com.astus.reader.app-main-69:\\xml\\backup_rules.xml"
+    },
+    {
+        "merged": "C:\\Users\\astus\\.gradle\\daemon\\8.13\\com.astus.reader.app-debug-67:\\drawable-nodpi_astus_reader_splash.png.flat",
+        "source": "C:\\Users\\astus\\.gradle\\daemon\\8.13\\com.astus.reader.app-main-69:\\drawable-nodpi\\astus_reader_splash.png"
+    },
+    {
+        "merged": "com.astus.reader.app-debug-67:/mipmap-mdpi_ic_launcher_round.png.flat",
+        "source": "com.astus.reader.app-main-69:/mipmap-mdpi/ic_launcher_round.png"
+    }
+]
