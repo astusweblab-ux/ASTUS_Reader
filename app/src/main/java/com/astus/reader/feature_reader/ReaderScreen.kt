@@ -22,7 +22,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -49,14 +49,17 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
@@ -73,7 +76,10 @@ import androidx.core.content.ContextCompat
 import com.astus.reader.core.tts.TtsPlaybackService
 import com.astus.reader.core.ui.AstusReaderTheme
 import com.astus.reader.core.ui.ReaderThemeMode
+import com.astus.reader.core.util.SentenceRange
 import com.astus.reader.feature_tts.TtsMiniPlayer
+import kotlin.math.abs
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 
 private val ReaderGold = Color(0xFFE7BD63)
@@ -135,11 +141,12 @@ fun ReaderScreen(
     val state by viewModel.state.collectAsState()
     val context = LocalContext.current
     val listState = rememberLazyListState()
+    val coroutineScope = rememberCoroutineScope()
     val hapticFeedback = LocalHapticFeedback.current
     var ttsServiceStarted by remember { mutableStateOf(false) }
     var showPlayer by remember { mutableStateOf(false) }
-    var previousPageIndex by remember { mutableStateOf(state.currentPageIndex) }
     val pageTurn = remember { Animatable(0f) }
+    var dragTurn by remember { mutableFloatStateOf(0f) }
 
     LaunchedEffect(state.pageCount, state.initialPageIndex) {
         if (state.pageCount > 0) {
@@ -170,15 +177,13 @@ fun ReaderScreen(
     }
 
     val readerPalette = paletteFor(state.themeMode)
-
-    LaunchedEffect(state.currentPageIndex) {
-        if (state.currentPageIndex != previousPageIndex) {
-            val direction = if (state.currentPageIndex > previousPageIndex) -1f else 1f
-            previousPageIndex = state.currentPageIndex
-            pageTurn.snapTo(16f * direction)
-            pageTurn.animateTo(0f, animationSpec = tween(durationMillis = 280))
-        }
+    val turnValue = if (dragTurn != 0f) dragTurn else pageTurn.value
+    val targetPageIndex = when {
+        turnValue < 0f && state.currentPageIndex < state.pageCount - 1 -> state.currentPageIndex + 1
+        turnValue > 0f && state.currentPageIndex > 0 -> state.currentPageIndex - 1
+        else -> state.currentPageIndex
     }
+    val turnAmount = abs(turnValue).coerceIn(0f, 1f)
 
     AstusReaderTheme(mode = state.themeMode) {
         Scaffold(
@@ -259,110 +264,250 @@ fun ReaderScreen(
                     .pointerInput(state.currentPageIndex, state.pageCount) {
                         detectHorizontalDragGestures(
                             onDragStart = { pageDragAmount = 0f },
-                            onHorizontalDrag = { _, dragAmount -> pageDragAmount += dragAmount },
+                            onHorizontalDrag = { change, dragAmount ->
+                                pageDragAmount += dragAmount
+                                val canTurnNext = pageDragAmount < 0f && state.currentPageIndex < state.pageCount - 1
+                                val canTurnPrevious = pageDragAmount > 0f && state.currentPageIndex > 0
+                                val rawProgress = pageDragAmount / size.width.toFloat()
+                                dragTurn = if (canTurnNext || canTurnPrevious) {
+                                    rawProgress.coerceIn(-1f, 1f)
+                                } else {
+                                    (rawProgress * 0.18f).coerceIn(-0.08f, 0.08f)
+                                }
+                                change.consume()
+                            },
                             onDragEnd = {
-                                when {
-                                    pageDragAmount <= -80f -> viewModel.onIntent(ReaderIntent.NextPage)
-                                    pageDragAmount >= 80f -> viewModel.onIntent(ReaderIntent.PreviousPage)
+                                val turnDirection = when {
+                                    dragTurn <= -0.22f && state.currentPageIndex < state.pageCount - 1 -> -1f
+                                    dragTurn >= 0.22f && state.currentPageIndex > 0 -> 1f
+                                    else -> 0f
+                                }
+                                coroutineScope.launch {
+                                    pageTurn.snapTo(dragTurn)
+                                    dragTurn = 0f
+                                    if (turnDirection == 0f) {
+                                        pageTurn.animateTo(0f, animationSpec = tween(durationMillis = 170))
+                                    } else {
+                                        pageTurn.animateTo(turnDirection, animationSpec = tween(durationMillis = 210))
+                                        if (turnDirection < 0f) {
+                                            viewModel.onIntent(ReaderIntent.NextPage)
+                                        } else {
+                                            viewModel.onIntent(ReaderIntent.PreviousPage)
+                                        }
+                                        pageTurn.snapTo(0f)
+                                    }
                                 }
                                 pageDragAmount = 0f
                             },
-                            onDragCancel = { pageDragAmount = 0f }
+                            onDragCancel = {
+                                coroutineScope.launch {
+                                    pageTurn.snapTo(dragTurn)
+                                    dragTurn = 0f
+                                    pageTurn.animateTo(0f, animationSpec = tween(durationMillis = 170))
+                                }
+                                pageDragAmount = 0f
+                            }
                         )
                     }
                     .padding(padding),
                 color = Color.Transparent
             ) {
-                Surface(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 10.dp, vertical = 10.dp)
-                        .graphicsLayer {
-                            cameraDistance = 18f * density
-                            rotationY = pageTurn.value
-                            translationX = -pageTurn.value * density * 0.6f
-                            shadowElevation = 10f
-                        },
-                    color = readerPalette.page,
-                    shape = RoundedCornerShape(8.dp),
-                    border = BorderStroke(1.dp, readerPalette.pageBorder),
-                    shadowElevation = 8.dp
-                ) {
-                    Box(Modifier.fillMaxSize()) {
-                        LazyColumn(
-                            state = listState,
-                            modifier = Modifier.fillMaxSize(),
-                            contentPadding = PaddingValues(horizontal = 24.dp, vertical = 18.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            item {
-                                Text(
-                                    text = "Глава 1",
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(bottom = 8.dp),
-                                    color = readerPalette.muted,
-                                    textAlign = TextAlign.Start,
-                                    style = MaterialTheme.typography.labelLarge
-                                )
-                            }
-                            if (state.bookmarks.isNotEmpty()) {
-                                item {
-                                    BookmarkPanel(
-                                        state = state,
-                                        onJump = { position ->
-                                            val index = state.sentences.indexOfLast { it.start <= position }.coerceAtLeast(0)
-                                            viewModel.onIntent(ReaderIntent.VisibleSentenceChanged(index))
-                                        },
-                                        onDelete = { viewModel.onIntent(ReaderIntent.DeleteBookmark(it)) }
-                                    )
-                                }
-                            }
-                            itemsIndexed(state.currentPageSentences, key = { _, sentence -> sentence.index }) { _, sentence ->
-                                val index = sentence.index
-                                val selected = index == state.currentSentenceIndex
-                                Text(
-                                    text = sentence.text,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .background(
-                                            color = if (selected) readerPalette.highlight else Color.Transparent,
-                                            shape = RoundedCornerShape(6.dp)
-                                        )
-                                        .longPressToSelect {
-                                            hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
-                                            viewModel.onIntent(ReaderIntent.SelectSentence(index))
-                                        }
-                                        .padding(horizontal = 8.dp, vertical = 5.dp),
-                                    style = MaterialTheme.typography.bodyLarge.copy(
-                                        fontFamily = FontFamily.Serif,
-                                        fontSize = state.fontSizeSp.sp,
-                                        lineHeight = (state.fontSizeSp * state.lineHeightMultiplier).sp,
-                                        color = if (selected) readerPalette.highlightText else readerPalette.text
-                                    )
-                                )
-                            }
-                            item { Spacer(Modifier.height(36.dp)) }
-                        }
-                        Box(
+                Box(Modifier.fillMaxSize()) {
+                    if (targetPageIndex != state.currentPageIndex && turnAmount > 0.01f) {
+                        ReaderPageSurface(
+                            state = state,
+                            palette = readerPalette,
+                            sentences = pageSentencesFor(state, targetPageIndex),
+                            interactive = false,
                             modifier = Modifier
-                                .align(Alignment.CenterStart)
-                                .fillMaxHeight()
-                                .width(22.dp)
-                                .background(
-                                    Brush.horizontalGradient(
-                                        colors = listOf(
-                                            readerPalette.spine.copy(alpha = 0.38f),
-                                            Color.Transparent
-                                        )
-                                    )
+                                .fillMaxSize()
+                                .padding(horizontal = 10.dp, vertical = 10.dp)
+                                .graphicsLayer {
+                                    scaleX = 0.96f + 0.04f * turnAmount
+                                    scaleY = 0.985f + 0.015f * turnAmount
+                                    alpha = 0.64f + 0.36f * turnAmount
+                                },
+                            onJump = {},
+                            onDelete = {},
+                            onSelectSentence = {}
+                        )
+                    }
+                    ReaderPageSurface(
+                        state = state,
+                        palette = readerPalette,
+                        sentences = state.currentPageSentences,
+                        listState = listState,
+                        interactive = true,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 10.dp, vertical = 10.dp)
+                            .graphicsLayer {
+                                val direction = when {
+                                    turnValue < 0f -> -1f
+                                    turnValue > 0f -> 1f
+                                    else -> 0f
+                                }
+                                cameraDistance = 18f * density
+                                transformOrigin = TransformOrigin(
+                                    pivotFractionX = if (direction < 0f) 0f else 1f,
+                                    pivotFractionY = 0.5f
                                 )
+                                rotationY = direction * 78f * turnAmount
+                                translationX = direction * 28f * density * turnAmount
+                                scaleX = 1f - 0.045f * turnAmount
+                                alpha = 1f - 0.18f * turnAmount
+                                shadowElevation = 12f + 18f * turnAmount
+                            },
+                        onJump = { position ->
+                            val index = state.sentences.indexOfLast { it.start <= position }.coerceAtLeast(0)
+                            viewModel.onIntent(ReaderIntent.VisibleSentenceChanged(index))
+                        },
+                        onDelete = { viewModel.onIntent(ReaderIntent.DeleteBookmark(it)) },
+                        onSelectSentence = { index ->
+                            hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
+                            viewModel.onIntent(ReaderIntent.SelectSentence(index))
+                        }
+                    )
+                    if (turnAmount > 0f) {
+                        PageTurnShade(
+                            palette = readerPalette,
+                            progress = turnAmount,
+                            direction = if (turnValue < 0f) -1f else 1f
                         )
                     }
                 }
             }
         }
     }
+}
+
+@Composable
+private fun ReaderPageSurface(
+    state: ReaderState,
+    palette: ReaderPalette,
+    sentences: List<SentenceRange>,
+    modifier: Modifier = Modifier,
+    listState: LazyListState? = null,
+    interactive: Boolean,
+    onJump: (Int) -> Unit,
+    onDelete: (String) -> Unit,
+    onSelectSentence: (Int) -> Unit
+) {
+    val effectiveListState = listState ?: rememberLazyListState()
+    Surface(
+        modifier = modifier,
+        color = palette.page,
+        shape = RoundedCornerShape(8.dp),
+        border = BorderStroke(1.dp, palette.pageBorder),
+        shadowElevation = 8.dp
+    ) {
+        Box(Modifier.fillMaxSize()) {
+            LazyColumn(
+                state = effectiveListState,
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(horizontal = 24.dp, vertical = 18.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                item {
+                    Text(
+                        text = "Глава 1",
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 8.dp),
+                        color = palette.muted,
+                        textAlign = TextAlign.Start,
+                        style = MaterialTheme.typography.labelLarge
+                    )
+                }
+                if (state.bookmarks.isNotEmpty()) {
+                    item {
+                        BookmarkPanel(
+                            state = state,
+                            onJump = onJump,
+                            onDelete = onDelete
+                        )
+                    }
+                }
+                itemsIndexed(sentences, key = { _, sentence -> sentence.index }) { _, sentence ->
+                    val index = sentence.index
+                    val selected = index == state.currentSentenceIndex
+                    Text(
+                        text = sentence.text,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(
+                                color = if (selected) palette.highlight else Color.Transparent,
+                                shape = RoundedCornerShape(6.dp)
+                            )
+                            .then(
+                                if (interactive) {
+                                    Modifier.longPressToSelect { onSelectSentence(index) }
+                                } else {
+                                    Modifier
+                                }
+                            )
+                            .padding(horizontal = 8.dp, vertical = 5.dp),
+                        style = MaterialTheme.typography.bodyLarge.copy(
+                            fontFamily = FontFamily.Serif,
+                            fontSize = state.fontSizeSp.sp,
+                            lineHeight = (state.fontSizeSp * state.lineHeightMultiplier).sp,
+                            color = if (selected) palette.highlightText else palette.text
+                        )
+                    )
+                }
+                item { Spacer(Modifier.height(36.dp)) }
+            }
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterStart)
+                    .fillMaxHeight()
+                    .width(22.dp)
+                    .background(
+                        Brush.horizontalGradient(
+                            colors = listOf(
+                                palette.spine.copy(alpha = 0.38f),
+                                Color.Transparent
+                            )
+                        )
+                    )
+            )
+        }
+    }
+}
+
+@Composable
+private fun PageTurnShade(
+    palette: ReaderPalette,
+    progress: Float,
+    direction: Float
+) {
+    val alignment = if (direction < 0f) Alignment.CenterEnd else Alignment.CenterStart
+    val colors = if (direction < 0f) {
+        listOf(Color.Transparent, palette.spine.copy(alpha = 0.46f * progress))
+    } else {
+        listOf(palette.spine.copy(alpha = 0.46f * progress), Color.Transparent)
+    }
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 10.dp, vertical = 10.dp),
+        contentAlignment = alignment
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxHeight()
+                .width((34 + 54 * progress).dp)
+                .background(Brush.horizontalGradient(colors))
+        )
+    }
+}
+
+private fun pageSentencesFor(state: ReaderState, pageIndex: Int): List<SentenceRange> {
+    val page = state.pages.getOrNull(pageIndex) ?: return emptyList()
+    return state.sentences.subList(
+        page.startSentenceIndex.coerceIn(0, state.sentences.size),
+        page.endSentenceIndexExclusive.coerceIn(0, state.sentences.size)
+    )
 }
 
 @Composable
