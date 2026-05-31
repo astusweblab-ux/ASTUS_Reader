@@ -2,6 +2,8 @@ package com.astus.reader.feature_reader
 
 import android.content.Intent
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -42,7 +44,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -64,7 +65,6 @@ import com.astus.reader.core.tts.TtsPlaybackService
 import com.astus.reader.core.ui.AstusReaderTheme
 import com.astus.reader.core.ui.ReaderThemeMode
 import com.astus.reader.feature_tts.TtsMiniPlayer
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 
 private val ReaderGold = Color(0xFFE7BD63)
@@ -114,13 +114,12 @@ fun ReaderScreen(
     val state by viewModel.state.collectAsState()
     val context = LocalContext.current
     val listState = rememberLazyListState()
-    val coroutineScope = rememberCoroutineScope()
     val hapticFeedback = LocalHapticFeedback.current
     var ttsServiceStarted by remember { mutableStateOf(false) }
 
-    LaunchedEffect(state.sentences.size, state.initialSentenceIndex) {
-        if (state.sentences.isNotEmpty()) {
-            listState.scrollToItem(state.initialSentenceIndex.coerceIn(0, state.sentences.lastIndex))
+    LaunchedEffect(state.pageCount, state.initialPageIndex) {
+        if (state.pageCount > 0) {
+            listState.scrollToItem(0)
         }
     }
 
@@ -137,8 +136,12 @@ fun ReaderScreen(
     }
 
     LaunchedEffect(state.isPlaying, state.currentSentenceIndex) {
-        if (state.isPlaying && state.sentences.isNotEmpty()) {
-            listState.animateScrollToItem(state.currentSentenceIndex.coerceIn(0, state.sentences.lastIndex))
+        if (state.isPlaying && state.currentPageSentences.isNotEmpty()) {
+            val localIndex = state.currentPageSentences.indexOfFirst { it.index == state.currentSentenceIndex }
+            if (localIndex >= 0) {
+                val headerItems = 2 + if (state.bookmarks.isNotEmpty()) 1 else 0
+                listState.animateScrollToItem(localIndex + headerItems)
+            }
         }
     }
 
@@ -211,6 +214,14 @@ fun ReaderScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 item {
+                    PageProgressHeader(
+                        state = state,
+                        palette = readerPalette,
+                        onPrevious = { viewModel.onIntent(ReaderIntent.PreviousPage) },
+                        onNext = { viewModel.onIntent(ReaderIntent.NextPage) }
+                    )
+                }
+                item {
                     Text(
                         text = "Глава 1",
                         modifier = Modifier
@@ -227,14 +238,14 @@ fun ReaderScreen(
                             state = state,
                             onJump = { position ->
                                 val index = state.sentences.indexOfLast { it.start <= position }.coerceAtLeast(0)
-                                coroutineScope.launch { listState.animateScrollToItem(index) }
                                 viewModel.onIntent(ReaderIntent.VisibleSentenceChanged(index))
                             },
                             onDelete = { viewModel.onIntent(ReaderIntent.DeleteBookmark(it)) }
                         )
                     }
                 }
-                itemsIndexed(state.sentences, key = { _, sentence -> sentence.index }) { index, sentence ->
+                itemsIndexed(state.currentPageSentences, key = { _, sentence -> sentence.index }) { _, sentence ->
+                    val index = sentence.index
                     val selected = index == state.currentSentenceIndex
                     Text(
                         text = sentence.text,
@@ -259,6 +270,56 @@ fun ReaderScreen(
                 }
                 item { Spacer(Modifier.height(60.dp)) }
             }
+        }
+    }
+}
+
+@Composable
+private fun PageProgressHeader(
+    state: ReaderState,
+    palette: ReaderPalette,
+    onPrevious: () -> Unit,
+    onNext: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(palette.panel, RoundedCornerShape(8.dp))
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        IconButton(
+            onClick = onPrevious,
+            enabled = state.currentPageIndex > 0
+        ) {
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "Previous page")
+        }
+        Column(
+            modifier = Modifier.weight(1f),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = if (state.pageCount == 0) "Страница 0 из 0" else "Страница ${state.currentPageNumber} из ${state.pageCount}",
+                color = palette.text,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = "Прочитано ${state.currentPageIndex.coerceAtLeast(0)} • осталось ${state.pagesLeft}",
+                color = palette.muted,
+                style = MaterialTheme.typography.labelMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        IconButton(
+            onClick = onNext,
+            enabled = state.currentPageIndex < state.pageCount - 1
+        ) {
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Next page")
         }
     }
 }

@@ -25,13 +25,25 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+data class ReaderPage(
+    val index: Int,
+    val startSentenceIndex: Int,
+    val endSentenceIndexExclusive: Int,
+    val startPosition: Int,
+    val endPosition: Int
+)
+
 data class ReaderState(
     val bookId: String = "",
     val book: Book? = null,
     val sentences: List<SentenceRange> = emptyList(),
+    val pages: List<ReaderPage> = emptyList(),
     val bookmarks: List<Bookmark> = emptyList(),
     val currentSentenceIndex: Int = 0,
     val initialSentenceIndex: Int = 0,
+    val currentPageIndex: Int = 0,
+    val initialPageIndex: Int = 0,
+    val hasReadingProgressRestored: Boolean = false,
     val fontSizeSp: Float = 18f,
     val lineHeightMultiplier: Float = 1.55f,
     val themeMode: ReaderThemeMode = ReaderThemeMode.Light,
@@ -44,13 +56,40 @@ data class ReaderState(
     val enginePackage: String? = null
 ) {
     val readingProgress: Float
-        get() = if (sentences.isEmpty()) 0f else (currentSentenceIndex + 1).toFloat() / sentences.size.toFloat()
+        get() = if (pages.isEmpty()) {
+            if (sentences.isEmpty()) 0f else (currentSentenceIndex + 1).toFloat() / sentences.size.toFloat()
+        } else {
+            (currentPageIndex + 1).toFloat() / pages.size.toFloat()
+        }
+
+    val currentPage: ReaderPage?
+        get() = pages.getOrNull(currentPageIndex)
+
+    val currentPageNumber: Int
+        get() = if (pages.isEmpty()) 0 else currentPageIndex + 1
+
+    val pageCount: Int
+        get() = pages.size
+
+    val pagesLeft: Int
+        get() = (pages.size - currentPageIndex - 1).coerceAtLeast(0)
+
+    val currentPageSentences: List<SentenceRange>
+        get() {
+            val page = currentPage ?: return sentences
+            return sentences.subList(
+                page.startSentenceIndex.coerceIn(0, sentences.size),
+                page.endSentenceIndexExclusive.coerceIn(0, sentences.size)
+            )
+        }
 }
 
 sealed interface ReaderIntent {
     data object PlayPause : ReaderIntent
     data object PreviousSentence : ReaderIntent
     data object NextSentence : ReaderIntent
+    data object PreviousPage : ReaderIntent
+    data object NextPage : ReaderIntent
     data class FontSizeChanged(val value: Float) : ReaderIntent
     data class LineHeightChanged(val value: Float) : ReaderIntent
     data class ThemeChanged(val mode: ReaderThemeMode) : ReaderIntent
@@ -89,6 +128,8 @@ class ReaderViewModel @Inject constructor(
             ReaderIntent.PlayPause -> togglePlayback()
             ReaderIntent.PreviousSentence -> ttsController.previous()
             ReaderIntent.NextSentence -> ttsController.next()
+            ReaderIntent.PreviousPage -> movePage(-1)
+            ReaderIntent.NextPage -> movePage(1)
             is ReaderIntent.FontSizeChanged -> updateReaderStyle(fontSize = intent.value)
             is ReaderIntent.LineHeightChanged -> updateReaderStyle(lineHeight = intent.value)
             is ReaderIntent.ThemeChanged -> updateReaderStyle(theme = intent.mode)
@@ -108,7 +149,18 @@ class ReaderViewModel @Inject constructor(
         viewModelScope.launch {
             repository.observeBook(bookId).collectLatest { book ->
                 val sentences = book?.content?.let(TextChunker::sentences).orEmpty()
-                _state.update { it.copy(book = book, sentences = sentences.ifEmpty { fallbackSentence(book) }) }
+                _state.update { state ->
+                    val nextSentences = sentences.ifEmpty { fallbackSentence(book) }
+                    val pages = paginate(nextSentences, state.fontSizeSp, state.lineHeightMultiplier)
+                    val currentPageIndex = pageIndexForSentence(state.currentSentenceIndex, pages)
+                    state.copy(
+                        book = book,
+                        sentences = nextSentences,
+                        pages = pages,
+                        currentPageIndex = currentPageIndex,
+                        initialPageIndex = currentPageIndex
+                    )
+                }
             }
         }
     }
@@ -118,8 +170,16 @@ class ReaderViewModel @Inject constructor(
             repository.observeReadingProgress(bookId).collectLatest { progress ->
                 if (progress != null) {
                     _state.update {
+                        val sentenceIndex = sentenceIndexForPosition(progress.position, it.sentences)
+                        val pages = paginate(it.sentences, progress.fontSizeSp, progress.lineHeightMultiplier)
+                        val pageIndex = pageIndexForSentence(sentenceIndex, pages)
                         it.copy(
-                            initialSentenceIndex = sentenceIndexForPosition(progress.position, it.sentences),
+                            pages = pages,
+                            currentSentenceIndex = sentenceIndex,
+                            initialSentenceIndex = sentenceIndex,
+                            currentPageIndex = pageIndex,
+                            initialPageIndex = pageIndex,
+                            hasReadingProgressRestored = true,
                             fontSizeSp = progress.fontSizeSp,
                             lineHeightMultiplier = progress.lineHeightMultiplier,
                             themeMode = progress.themeMode
@@ -154,7 +214,16 @@ class ReaderViewModel @Inject constructor(
                 .map { it?.sentenceIndex ?: 0 }
                 .distinctUntilChanged()
                 .collectLatest { index ->
-                    _state.update { it.copy(currentSentenceIndex = index, initialSentenceIndex = index) }
+                    if (_state.value.hasReadingProgressRestored) return@collectLatest
+                    _state.update {
+                        val pageIndex = pageIndexForSentence(index, it.pages)
+                        it.copy(
+                            currentSentenceIndex = index,
+                            initialSentenceIndex = index,
+                            currentPageIndex = pageIndex,
+                            initialPageIndex = pageIndex
+                        )
+                    }
                 }
         }
     }
@@ -163,10 +232,12 @@ class ReaderViewModel @Inject constructor(
         viewModelScope.launch {
             ttsController.state.collectLatest { ttsState ->
                 _state.update {
+                    val pageIndex = pageIndexForSentence(ttsState.currentSentenceIndex, it.pages)
                     it.copy(
                         isTtsReady = ttsState.isReady,
                         isPlaying = ttsState.isPlaying,
                         currentSentenceIndex = ttsState.currentSentenceIndex,
+                        currentPageIndex = if (ttsState.isPlaying) pageIndex else it.currentPageIndex,
                         ttsSpeed = ttsState.speed,
                         ttsPitch = ttsState.pitch,
                         enginePackage = ttsState.enginePackage,
@@ -207,7 +278,9 @@ class ReaderViewModel @Inject constructor(
             lineHeightMultiplier = lineHeight ?: _state.value.lineHeightMultiplier,
             themeMode = theme ?: _state.value.themeMode
         )
-        _state.value = next
+        val pages = paginate(next.sentences, next.fontSizeSp, next.lineHeightMultiplier)
+        val pageIndex = pageIndexForSentence(next.currentSentenceIndex, pages)
+        _state.value = next.copy(pages = pages, currentPageIndex = pageIndex, initialPageIndex = pageIndex)
         saveVisibleSentence(next.currentSentenceIndex)
     }
 
@@ -269,7 +342,8 @@ class ReaderViewModel @Inject constructor(
     private fun saveVisibleSentence(index: Int) {
         val current = _state.value
         val sentence = current.sentences.getOrNull(index) ?: return
-        _state.update { it.copy(currentSentenceIndex = index) }
+        val pageIndex = pageIndexForSentence(index, current.pages)
+        _state.update { it.copy(currentSentenceIndex = index, currentPageIndex = pageIndex) }
         viewModelScope.launch {
             repository.saveReadingProgress(
                 ReadingProgress(
@@ -287,7 +361,15 @@ class ReaderViewModel @Inject constructor(
         val current = _state.value
         val safeIndex = index.coerceIn(0, (current.sentences.size - 1).coerceAtLeast(0))
         val sentence = current.sentences.getOrNull(safeIndex) ?: return
-        _state.update { it.copy(currentSentenceIndex = safeIndex, initialSentenceIndex = safeIndex) }
+        val pageIndex = pageIndexForSentence(safeIndex, current.pages)
+        _state.update {
+            it.copy(
+                currentSentenceIndex = safeIndex,
+                initialSentenceIndex = safeIndex,
+                currentPageIndex = pageIndex,
+                initialPageIndex = pageIndex
+            )
+        }
         if (current.isPlaying) {
             ttsController.play(current.sentences.map { it.text }, safeIndex)
         }
@@ -331,8 +413,64 @@ class ReaderViewModel @Inject constructor(
         saveVisibleSentence(index)
     }
 
+    private fun movePage(delta: Int) {
+        val current = _state.value
+        if (current.pages.isEmpty()) return
+        val pageIndex = (current.currentPageIndex + delta).coerceIn(0, current.pages.lastIndex)
+        if (pageIndex == current.currentPageIndex) return
+        val sentenceIndex = current.pages[pageIndex].startSentenceIndex
+        saveVisibleSentence(sentenceIndex)
+        _state.update { it.copy(initialPageIndex = pageIndex, initialSentenceIndex = sentenceIndex) }
+    }
+
     private fun sentenceIndexForPosition(position: Int, sentences: List<SentenceRange>): Int =
         sentences.indexOfLast { it.start <= position }.coerceAtLeast(0)
+
+    private fun pageIndexForSentence(sentenceIndex: Int, pages: List<ReaderPage>): Int =
+        pages.indexOfLast { page ->
+            sentenceIndex >= page.startSentenceIndex && sentenceIndex < page.endSentenceIndexExclusive
+        }.coerceAtLeast(0)
+
+    private fun paginate(
+        sentences: List<SentenceRange>,
+        fontSizeSp: Float,
+        lineHeightMultiplier: Float
+    ): List<ReaderPage> {
+        if (sentences.isEmpty()) return emptyList()
+        val targetChars = (1350f * (18f / fontSizeSp) * (1.55f / lineHeightMultiplier))
+            .toInt()
+            .coerceIn(650, 2400)
+        val pages = mutableListOf<ReaderPage>()
+        var pageStartIndex = 0
+        var charCount = 0
+
+        sentences.forEachIndexed { index, sentence ->
+            val weightedLength = sentence.text.length + 24
+            if (charCount > 0 && charCount + weightedLength > targetChars) {
+                val previous = sentences[index - 1]
+                pages += ReaderPage(
+                    index = pages.size,
+                    startSentenceIndex = pageStartIndex,
+                    endSentenceIndexExclusive = index,
+                    startPosition = sentences[pageStartIndex].start,
+                    endPosition = previous.end
+                )
+                pageStartIndex = index
+                charCount = 0
+            }
+            charCount += weightedLength
+        }
+
+        val last = sentences.last()
+        pages += ReaderPage(
+            index = pages.size,
+            startSentenceIndex = pageStartIndex,
+            endSentenceIndexExclusive = sentences.size,
+            startPosition = sentences[pageStartIndex].start,
+            endPosition = last.end
+        )
+        return pages
+    }
 
     private fun fallbackSentence(book: Book?): List<SentenceRange> {
         val content = book?.content.orEmpty()
