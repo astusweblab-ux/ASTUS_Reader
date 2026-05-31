@@ -2,10 +2,9 @@ package com.astus.reader.feature_reader
 
 import android.content.Intent
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,6 +14,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -35,6 +35,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
@@ -116,6 +118,7 @@ fun ReaderScreen(
     val listState = rememberLazyListState()
     val hapticFeedback = LocalHapticFeedback.current
     var ttsServiceStarted by remember { mutableStateOf(false) }
+    var showPlayer by remember { mutableStateOf(false) }
 
     LaunchedEffect(state.pageCount, state.initialPageIndex) {
         if (state.pageCount > 0) {
@@ -185,42 +188,63 @@ fun ReaderScreen(
                         IconButton(onClick = { viewModel.onIntent(ReaderIntent.AddBookmark) }) {
                             Icon(Icons.Default.BookmarkAdd, contentDescription = "Add bookmark")
                         }
-                        ReaderOptionsMenu(state = state, onIntent = viewModel::onIntent)
-                    }
+                ReaderOptionsMenu(
+                    state = state,
+                    showPlayer = showPlayer,
+                    onTogglePlayer = { showPlayer = !showPlayer },
+                    onIntent = viewModel::onIntent
+                )
+            }
                 )
             },
             bottomBar = {
-                TtsMiniPlayer(
-                    isPlaying = state.isPlaying,
-                    speed = state.ttsSpeed,
-                    pitch = state.ttsPitch,
-                    themeMode = state.themeMode,
-                    progress = state.readingProgress,
-                    onPlayPause = { viewModel.onIntent(ReaderIntent.PlayPause) },
-                    onPrevious = { viewModel.onIntent(ReaderIntent.PreviousSentence) },
-                    onNext = { viewModel.onIntent(ReaderIntent.NextSentence) },
-                    onSpeedChange = { viewModel.onIntent(ReaderIntent.SpeedChanged(it)) },
-                    onPitchChange = { viewModel.onIntent(ReaderIntent.PitchChanged(it)) }
-                )
+                Column {
+                    PageProgressFooter(
+                        state = state,
+                        palette = readerPalette,
+                        applyNavigationPadding = !showPlayer
+                    )
+                    if (showPlayer) {
+                        TtsMiniPlayer(
+                            isPlaying = state.isPlaying,
+                            speed = state.ttsSpeed,
+                            pitch = state.ttsPitch,
+                            themeMode = state.themeMode,
+                            progress = state.readingProgress,
+                            onPlayPause = { viewModel.onIntent(ReaderIntent.PlayPause) },
+                            onPrevious = { viewModel.onIntent(ReaderIntent.PreviousSentence) },
+                            onNext = { viewModel.onIntent(ReaderIntent.NextSentence) },
+                            onSpeedChange = { viewModel.onIntent(ReaderIntent.SpeedChanged(it)) },
+                            onPitchChange = { viewModel.onIntent(ReaderIntent.PitchChanged(it)) }
+                        )
+                    }
+                }
             }
         ) { padding ->
+            var pageDragAmount = 0f
             LazyColumn(
                 state = listState,
                 modifier = Modifier
                     .fillMaxSize()
                     .background(readerPalette.background)
+                    .pointerInput(state.currentPageIndex, state.pageCount) {
+                        detectHorizontalDragGestures(
+                            onDragStart = { pageDragAmount = 0f },
+                            onHorizontalDrag = { _, dragAmount -> pageDragAmount += dragAmount },
+                            onDragEnd = {
+                                when {
+                                    pageDragAmount <= -80f -> viewModel.onIntent(ReaderIntent.NextPage)
+                                    pageDragAmount >= 80f -> viewModel.onIntent(ReaderIntent.PreviousPage)
+                                }
+                                pageDragAmount = 0f
+                            },
+                            onDragCancel = { pageDragAmount = 0f }
+                        )
+                    }
                     .padding(padding),
                 contentPadding = PaddingValues(horizontal = 26.dp, vertical = 14.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                item {
-                    PageProgressHeader(
-                        state = state,
-                        palette = readerPalette,
-                        onPrevious = { viewModel.onIntent(ReaderIntent.PreviousPage) },
-                        onNext = { viewModel.onIntent(ReaderIntent.NextPage) }
-                    )
-                }
                 item {
                     Text(
                         text = "Глава 1",
@@ -275,51 +299,46 @@ fun ReaderScreen(
 }
 
 @Composable
-private fun PageProgressHeader(
+private fun PageProgressFooter(
     state: ReaderState,
     palette: ReaderPalette,
-    onPrevious: () -> Unit,
-    onNext: () -> Unit
+    applyNavigationPadding: Boolean
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(palette.panel, RoundedCornerShape(8.dp))
-            .padding(horizontal = 8.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    val modifier = if (applyNavigationPadding) {
+        Modifier.navigationBarsPadding()
+    } else {
+        Modifier
+    }
+    Surface(
+        color = palette.panel,
+        shadowElevation = 8.dp
     ) {
-        IconButton(
-            onClick = onPrevious,
-            enabled = state.currentPageIndex > 0
-        ) {
-            Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "Previous page")
-        }
         Column(
-            modifier = Modifier.weight(1f),
-            horizontalAlignment = Alignment.CenterHorizontally
+            modifier = modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(5.dp)
         ) {
+            LinearProgressIndicator(
+                progress = { state.readingProgress.coerceIn(0f, 1f) },
+                modifier = Modifier.fillMaxWidth(),
+                color = ReaderGold,
+                trackColor = palette.muted.copy(alpha = 0.28f)
+            )
             Text(
-                text = if (state.pageCount == 0) "Страница 0 из 0" else "Страница ${state.currentPageNumber} из ${state.pageCount}",
+                text = if (state.pageCount == 0) {
+                    "Страница 0 из 0"
+                } else {
+                    "Страница ${state.currentPageNumber} из ${state.pageCount}"
+                },
+                modifier = Modifier.fillMaxWidth(),
                 color = palette.text,
-                style = MaterialTheme.typography.titleSmall,
+                style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.SemiBold,
+                textAlign = TextAlign.Center,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            Text(
-                text = "Прочитано ${state.currentPageIndex.coerceAtLeast(0)} • осталось ${state.pagesLeft}",
-                color = palette.muted,
-                style = MaterialTheme.typography.labelMedium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-        IconButton(
-            onClick = onNext,
-            enabled = state.currentPageIndex < state.pageCount - 1
-        ) {
-            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Next page")
         }
     }
 }
@@ -368,6 +387,8 @@ private fun Modifier.longPressToSelect(
 @Composable
 private fun ReaderOptionsMenu(
     state: ReaderState,
+    showPlayer: Boolean,
+    onTogglePlayer: () -> Unit,
     onIntent: (ReaderIntent) -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
@@ -385,6 +406,13 @@ private fun ReaderOptionsMenu(
             DropdownMenuItem(
                 text = { Text("Движок TTS") },
                 onClick = { engineExpanded = true }
+            )
+            DropdownMenuItem(
+                text = { Text(if (showPlayer) "Скрыть плеер" else "Показать плеер") },
+                onClick = {
+                    onTogglePlayer()
+                    expanded = false
+                }
             )
             DropdownMenuItem(
                 text = {
