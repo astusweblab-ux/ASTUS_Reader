@@ -257,18 +257,29 @@ fun ReaderScreen(
             }
         ) { padding ->
             var pageDragAmount = 0f
+            var dragStartX = 0f
             Surface(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(readerPalette.background)
                     .pointerInput(state.currentPageIndex, state.pageCount) {
                         detectHorizontalDragGestures(
-                            onDragStart = { pageDragAmount = 0f },
+                            onDragStart = { start ->
+                                pageDragAmount = 0f
+                                dragStartX = start.x
+                            },
                             onHorizontalDrag = { change, dragAmount ->
                                 pageDragAmount += dragAmount
                                 val canTurnNext = pageDragAmount < 0f && state.currentPageIndex < state.pageCount - 1
                                 val canTurnPrevious = pageDragAmount > 0f && state.currentPageIndex > 0
-                                val rawProgress = pageDragAmount / size.width.toFloat()
+                                val width = size.width.toFloat().coerceAtLeast(1f)
+                                val minTurnDistance = width * 0.18f
+                                val turnDistance = if (pageDragAmount < 0f) {
+                                    dragStartX.coerceIn(minTurnDistance, width)
+                                } else {
+                                    (width - dragStartX).coerceIn(minTurnDistance, width)
+                                }
+                                val rawProgress = pageDragAmount / turnDistance
                                 dragTurn = if (canTurnNext || canTurnPrevious) {
                                     rawProgress.coerceIn(-1f, 1f)
                                 } else {
@@ -278,8 +289,8 @@ fun ReaderScreen(
                             },
                             onDragEnd = {
                                 val turnDirection = when {
-                                    dragTurn <= -0.22f && state.currentPageIndex < state.pageCount - 1 -> -1f
-                                    dragTurn >= 0.22f && state.currentPageIndex > 0 -> 1f
+                                    dragTurn <= -0.18f && state.currentPageIndex < state.pageCount - 1 -> -1f
+                                    dragTurn >= 0.18f && state.currentPageIndex > 0 -> 1f
                                     else -> 0f
                                 }
                                 coroutineScope.launch {
@@ -288,7 +299,7 @@ fun ReaderScreen(
                                     if (turnDirection == 0f) {
                                         pageTurn.animateTo(0f, animationSpec = tween(durationMillis = 170))
                                     } else {
-                                        pageTurn.animateTo(turnDirection, animationSpec = tween(durationMillis = 210))
+                                        pageTurn.animateTo(turnDirection, animationSpec = tween(durationMillis = 260))
                                         if (turnDirection < 0f) {
                                             viewModel.onIntent(ReaderIntent.NextPage)
                                         } else {
@@ -298,6 +309,7 @@ fun ReaderScreen(
                                     }
                                 }
                                 pageDragAmount = 0f
+                                dragStartX = 0f
                             },
                             onDragCancel = {
                                 coroutineScope.launch {
@@ -306,6 +318,7 @@ fun ReaderScreen(
                                     pageTurn.animateTo(0f, animationSpec = tween(durationMillis = 170))
                                 }
                                 pageDragAmount = 0f
+                                dragStartX = 0f
                             }
                         )
                     }
@@ -323,9 +336,9 @@ fun ReaderScreen(
                                 .fillMaxSize()
                                 .padding(horizontal = 10.dp, vertical = 10.dp)
                                 .graphicsLayer {
-                                    scaleX = 0.96f + 0.04f * turnAmount
-                                    scaleY = 0.985f + 0.015f * turnAmount
-                                    alpha = 0.64f + 0.36f * turnAmount
+                                    scaleX = 0.94f + 0.06f * turnAmount
+                                    scaleY = 0.98f + 0.02f * turnAmount
+                                    alpha = 0.58f + 0.42f * turnAmount
                                 },
                             onJump = {},
                             onDelete = {},
@@ -352,10 +365,14 @@ fun ReaderScreen(
                                     pivotFractionX = if (direction < 0f) 0f else 1f,
                                     pivotFractionY = 0.5f
                                 )
-                                rotationY = direction * 78f * turnAmount
-                                translationX = direction * 28f * density * turnAmount
-                                scaleX = 1f - 0.045f * turnAmount
-                                alpha = 1f - 0.18f * turnAmount
+                                rotationY = direction * 178f * turnAmount
+                                translationX = direction * 46f * density * turnAmount
+                                scaleX = 1f - 0.035f * turnAmount
+                                alpha = if (turnAmount < 0.55f) {
+                                    1f
+                                } else {
+                                    1f - ((turnAmount - 0.55f) / 0.45f) * 0.22f
+                                }
                                 shadowElevation = 12f + 18f * turnAmount
                             },
                         onJump = { position ->
