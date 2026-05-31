@@ -1,7 +1,10 @@
 package com.astus.reader.feature_reader
 
 import android.content.Intent
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -12,10 +15,12 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -50,7 +55,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.platform.LocalContext
@@ -74,6 +81,9 @@ private val ReaderGold = Color(0xFFE7BD63)
 private data class ReaderPalette(
     val background: Color,
     val panel: Color,
+    val page: Color,
+    val pageBorder: Color,
+    val spine: Color,
     val text: Color,
     val muted: Color,
     val highlight: Color,
@@ -84,6 +94,9 @@ private fun paletteFor(mode: ReaderThemeMode): ReaderPalette = when (mode) {
     ReaderThemeMode.Light -> ReaderPalette(
         background = Color(0xFFFCFBF4),
         panel = Color(0xFFEDE6D5),
+        page = Color(0xFFFFFFFA),
+        pageBorder = Color(0xFFE1D5B8),
+        spine = Color(0xFFD6C6A6),
         text = Color(0xFF242019),
         muted = Color(0xFF776A55),
         highlight = Color(0xFFE8C36D),
@@ -92,6 +105,9 @@ private fun paletteFor(mode: ReaderThemeMode): ReaderPalette = when (mode) {
     ReaderThemeMode.Dark -> ReaderPalette(
         background = Color(0xFF11120E),
         panel = Color(0xFF1E1C15),
+        page = Color(0xFF171711),
+        pageBorder = Color(0xFF3A3428),
+        spine = Color(0xFF2B2418),
         text = Color(0xFFF3E8D1),
         muted = Color(0xFFB8AA8C),
         highlight = ReaderGold,
@@ -100,6 +116,9 @@ private fun paletteFor(mode: ReaderThemeMode): ReaderPalette = when (mode) {
     ReaderThemeMode.Amoled -> ReaderPalette(
         background = Color.Black,
         panel = Color(0xFF0A0A0A),
+        page = Color(0xFF050505),
+        pageBorder = Color(0xFF242424),
+        spine = Color(0xFF14110B),
         text = Color(0xFFF0F0EA),
         muted = Color(0xFFA7A195),
         highlight = ReaderGold,
@@ -119,6 +138,8 @@ fun ReaderScreen(
     val hapticFeedback = LocalHapticFeedback.current
     var ttsServiceStarted by remember { mutableStateOf(false) }
     var showPlayer by remember { mutableStateOf(false) }
+    var previousPageIndex by remember { mutableStateOf(state.currentPageIndex) }
+    val pageTurn = remember { Animatable(0f) }
 
     LaunchedEffect(state.pageCount, state.initialPageIndex) {
         if (state.pageCount > 0) {
@@ -142,13 +163,22 @@ fun ReaderScreen(
         if (state.isPlaying && state.currentPageSentences.isNotEmpty()) {
             val localIndex = state.currentPageSentences.indexOfFirst { it.index == state.currentSentenceIndex }
             if (localIndex >= 0) {
-                val headerItems = 2 + if (state.bookmarks.isNotEmpty()) 1 else 0
+                val headerItems = 1 + if (state.bookmarks.isNotEmpty()) 1 else 0
                 listState.animateScrollToItem(localIndex + headerItems)
             }
         }
     }
 
     val readerPalette = paletteFor(state.themeMode)
+
+    LaunchedEffect(state.currentPageIndex) {
+        if (state.currentPageIndex != previousPageIndex) {
+            val direction = if (state.currentPageIndex > previousPageIndex) -1f else 1f
+            previousPageIndex = state.currentPageIndex
+            pageTurn.snapTo(16f * direction)
+            pageTurn.animateTo(0f, animationSpec = tween(durationMillis = 280))
+        }
+    }
 
     AstusReaderTheme(mode = state.themeMode) {
         Scaffold(
@@ -188,13 +218,13 @@ fun ReaderScreen(
                         IconButton(onClick = { viewModel.onIntent(ReaderIntent.AddBookmark) }) {
                             Icon(Icons.Default.BookmarkAdd, contentDescription = "Add bookmark")
                         }
-                ReaderOptionsMenu(
-                    state = state,
-                    showPlayer = showPlayer,
-                    onTogglePlayer = { showPlayer = !showPlayer },
-                    onIntent = viewModel::onIntent
-                )
-            }
+                        ReaderOptionsMenu(
+                            state = state,
+                            showPlayer = showPlayer,
+                            onTogglePlayer = { showPlayer = !showPlayer },
+                            onIntent = viewModel::onIntent
+                        )
+                    }
                 )
             },
             bottomBar = {
@@ -222,8 +252,7 @@ fun ReaderScreen(
             }
         ) { padding ->
             var pageDragAmount = 0f
-            LazyColumn(
-                state = listState,
+            Surface(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(readerPalette.background)
@@ -242,57 +271,95 @@ fun ReaderScreen(
                         )
                     }
                     .padding(padding),
-                contentPadding = PaddingValues(horizontal = 26.dp, vertical = 14.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                color = Color.Transparent
             ) {
-                item {
-                    Text(
-                        text = "Глава 1",
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 8.dp),
-                        color = readerPalette.muted,
-                        textAlign = TextAlign.Start,
-                        style = MaterialTheme.typography.labelLarge
-                    )
-                }
-                if (state.bookmarks.isNotEmpty()) {
-                    item {
-                        BookmarkPanel(
-                            state = state,
-                            onJump = { position ->
-                                val index = state.sentences.indexOfLast { it.start <= position }.coerceAtLeast(0)
-                                viewModel.onIntent(ReaderIntent.VisibleSentenceChanged(index))
-                            },
-                            onDelete = { viewModel.onIntent(ReaderIntent.DeleteBookmark(it)) }
+                Surface(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 10.dp, vertical = 10.dp)
+                        .graphicsLayer {
+                            cameraDistance = 18f * density
+                            rotationY = pageTurn.value
+                            translationX = -pageTurn.value * density * 0.6f
+                            shadowElevation = 10f
+                        },
+                    color = readerPalette.page,
+                    shape = RoundedCornerShape(8.dp),
+                    border = BorderStroke(1.dp, readerPalette.pageBorder),
+                    shadowElevation = 8.dp
+                ) {
+                    Box(Modifier.fillMaxSize()) {
+                        LazyColumn(
+                            state = listState,
+                            modifier = Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(horizontal = 24.dp, vertical = 18.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            item {
+                                Text(
+                                    text = "Глава 1",
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(bottom = 8.dp),
+                                    color = readerPalette.muted,
+                                    textAlign = TextAlign.Start,
+                                    style = MaterialTheme.typography.labelLarge
+                                )
+                            }
+                            if (state.bookmarks.isNotEmpty()) {
+                                item {
+                                    BookmarkPanel(
+                                        state = state,
+                                        onJump = { position ->
+                                            val index = state.sentences.indexOfLast { it.start <= position }.coerceAtLeast(0)
+                                            viewModel.onIntent(ReaderIntent.VisibleSentenceChanged(index))
+                                        },
+                                        onDelete = { viewModel.onIntent(ReaderIntent.DeleteBookmark(it)) }
+                                    )
+                                }
+                            }
+                            itemsIndexed(state.currentPageSentences, key = { _, sentence -> sentence.index }) { _, sentence ->
+                                val index = sentence.index
+                                val selected = index == state.currentSentenceIndex
+                                Text(
+                                    text = sentence.text,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(
+                                            color = if (selected) readerPalette.highlight else Color.Transparent,
+                                            shape = RoundedCornerShape(6.dp)
+                                        )
+                                        .longPressToSelect {
+                                            hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            viewModel.onIntent(ReaderIntent.SelectSentence(index))
+                                        }
+                                        .padding(horizontal = 8.dp, vertical = 5.dp),
+                                    style = MaterialTheme.typography.bodyLarge.copy(
+                                        fontFamily = FontFamily.Serif,
+                                        fontSize = state.fontSizeSp.sp,
+                                        lineHeight = (state.fontSizeSp * state.lineHeightMultiplier).sp,
+                                        color = if (selected) readerPalette.highlightText else readerPalette.text
+                                    )
+                                )
+                            }
+                            item { Spacer(Modifier.height(36.dp)) }
+                        }
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.CenterStart)
+                                .fillMaxHeight()
+                                .width(22.dp)
+                                .background(
+                                    Brush.horizontalGradient(
+                                        colors = listOf(
+                                            readerPalette.spine.copy(alpha = 0.38f),
+                                            Color.Transparent
+                                        )
+                                    )
+                                )
                         )
                     }
                 }
-                itemsIndexed(state.currentPageSentences, key = { _, sentence -> sentence.index }) { _, sentence ->
-                    val index = sentence.index
-                    val selected = index == state.currentSentenceIndex
-                    Text(
-                        text = sentence.text,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(
-                                color = if (selected) readerPalette.highlight else Color.Transparent,
-                                shape = RoundedCornerShape(6.dp)
-                            )
-                            .longPressToSelect {
-                                hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
-                                viewModel.onIntent(ReaderIntent.SelectSentence(index))
-                            }
-                            .padding(horizontal = 8.dp, vertical = 5.dp),
-                        style = MaterialTheme.typography.bodyLarge.copy(
-                            fontFamily = FontFamily.Serif,
-                            fontSize = state.fontSizeSp.sp,
-                            lineHeight = (state.fontSizeSp * state.lineHeightMultiplier).sp,
-                            color = if (selected) readerPalette.highlightText else readerPalette.text
-                        )
-                    )
-                }
-                item { Spacer(Modifier.height(60.dp)) }
             }
         }
     }
@@ -327,9 +394,9 @@ private fun PageProgressFooter(
             )
             Text(
                 text = if (state.pageCount == 0) {
-                    "Страница 0 из 0"
+                    "0 / 0"
                 } else {
-                    "Страница ${state.currentPageNumber} из ${state.pageCount}"
+                    "${state.currentPageNumber} / ${state.pageCount}"
                 },
                 modifier = Modifier.fillMaxWidth(),
                 color = palette.text,
