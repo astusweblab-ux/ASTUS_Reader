@@ -33,7 +33,7 @@ The app may show playback notifications while text-to-speech is active. Notifica
 
 ## Backups
 
-Depending on Android system settings, local app data may be included in Android device backup or transfer features.
+ASTUS Reader disables Android cloud backup for app data. Imported books, extracted text, bookmarks, progress, and settings stay on the device unless the user manually exports or shares files outside the app.
 
 ## Contact
 

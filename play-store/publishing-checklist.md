@@ -4,10 +4,11 @@
 
 - Build format: Android App Bundle (`.aab`)
 - Package name: `com.astus.reader`
-- Version code: `1`
-- Version name: `0.1.0`
+- Version code: `2`
+- Version name: `0.1.1`
 - Minimum SDK: 26
 - Target SDK: 36
+- Android cloud backup: disabled for app data
 
 ## Store Listing
 
@@ -29,6 +30,7 @@
   - App access
   - Target audience and content
   - Content rating
+- Verify the release uses `@mipmap/app_icon` generated from `builds/Copi2.png`.
 - Add phone screenshots.
 - Add app icon and feature graphic.
 - Choose release track: internal testing, closed testing, open testing, or production.

@@ -3,6 +3,7 @@ package com.astus.reader.data
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import androidx.core.net.toUri
 import com.astus.reader.core.database.dao.BookDao
 import com.astus.reader.core.database.entity.BookmarkEntity
 import com.astus.reader.core.datastore.SettingsDataStore
@@ -77,7 +78,7 @@ class BookRepositoryImpl @Inject constructor(
         books.filter { it.coverUri == null && it.sourceUri.isNotBlank() }
             .forEach { book ->
                 val coverUri = runCatching {
-                    BookParser.parse(context, Uri.parse(book.sourceUri), book.id).coverUri
+                    BookParser.parse(context, book.sourceUri.toUri(), book.id).coverUri
                 }.getOrNull()
                 if (!coverUri.isNullOrBlank()) {
                     dao.updateBookCover(book.id, coverUri)

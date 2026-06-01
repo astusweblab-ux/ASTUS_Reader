@@ -4,6 +4,9 @@
     android:initialLayout="@layout/widget_astus_reader"
     android:minWidth="180dp"
     android:minHeight="72dp"
+    android:previewLayout="@layout/widget_astus_reader"
     android:resizeMode="horizontal|vertical"
+    android:targetCellWidth="3"
+    android:targetCellHeight="1"
     android:updatePeriodMillis="0"
     android:widgetCategory="home_screen" />

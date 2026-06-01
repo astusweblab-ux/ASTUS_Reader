@@ -1,7 +1,6 @@
 package com.astus.reader.feature_library
 
 import android.content.Intent
-import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -61,6 +60,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import androidx.core.net.toUri
 import coil.compose.AsyncImage
 import com.astus.reader.domain.model.Book
 import com.astus.reader.feature_import.ImportFormats
@@ -156,7 +156,7 @@ fun LibraryScreen(
                         .padding(top = 24.dp, bottom = 12.dp),
                     onOpenSite = {
                         context.startActivity(
-                            Intent(Intent.ACTION_VIEW, Uri.parse("https://astuslab.com.ua/"))
+                            Intent(Intent.ACTION_VIEW, "https://astuslab.com.ua/".toUri())
                         )
                     }
                 )
@@ -213,7 +213,7 @@ private fun ContinueReadingCard(
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = book?.author ?: "TXT, FB2 или EPUB через Storage Access Framework",
+                    text = book?.author ?: "TXT, FB2, EPUB, PDF, DOCX, HTML, MD и RTF",
                     style = MaterialTheme.typography.bodyMedium,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis

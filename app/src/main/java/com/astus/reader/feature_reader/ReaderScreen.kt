@@ -427,7 +427,11 @@ private fun ReaderPageSurface(
             ) {
                 item {
                     Text(
-                        text = "Глава 1",
+                        text = if (state.pageCount > 0) {
+                            "${state.currentPageNumber} / ${state.pageCount}"
+                        } else {
+                            state.book?.title ?: "Чтение"
+                        },
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(bottom = 8.dp),

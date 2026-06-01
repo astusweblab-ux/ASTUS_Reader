@@ -1,7 +1,11 @@
 package com.astus.reader
 
+import android.Manifest
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -49,6 +53,14 @@ class MainActivity : ComponentActivity() {
             val settings by settingsDataStore.settings.collectAsState(initial = ReaderSettings())
             KeepScreenOnEffect(settings.keepScreenOn)
             var showSplash by remember { mutableStateOf(true) }
+            val notificationPermissionLauncher = rememberLauncherForActivityResult(
+                ActivityResultContracts.RequestPermission()
+            ) { }
+            LaunchedEffect(Unit) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                }
+            }
             LaunchedEffect(Unit) {
                 delay(1_650)
                 showSplash = false

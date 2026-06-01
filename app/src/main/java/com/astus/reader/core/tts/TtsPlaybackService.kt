@@ -6,7 +6,6 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
-import android.os.Build
 import android.os.IBinder
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
@@ -14,8 +13,14 @@ import androidx.core.app.NotificationCompat
 import androidx.media.app.NotificationCompat.MediaStyle
 import com.astus.reader.MainActivity
 import com.astus.reader.R
+import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
 
+@AndroidEntryPoint
 class TtsPlaybackService : Service() {
+    @Inject
+    lateinit var ttsController: TtsController
+
     private lateinit var mediaSession: MediaSessionCompat
     private var bookTitle: String = "ASTUS Reader"
 
@@ -24,10 +29,25 @@ class TtsPlaybackService : Service() {
         createNotificationChannel()
         mediaSession = MediaSessionCompat(this, "ASTUSReaderTts").apply {
             setCallback(object : MediaSessionCompat.Callback() {
-                override fun onPlay() = refreshPlayback(true)
-                override fun onPause() = refreshPlayback(false)
-                override fun onSkipToNext() = refreshPlayback(true)
-                override fun onSkipToPrevious() = refreshPlayback(true)
+                override fun onPlay() {
+                    ttsController.resume()
+                    refreshPlayback(true)
+                }
+
+                override fun onPause() {
+                    ttsController.pause()
+                    refreshPlayback(false)
+                }
+
+                override fun onSkipToNext() {
+                    ttsController.next()
+                    refreshPlayback(true)
+                }
+
+                override fun onSkipToPrevious() {
+                    ttsController.previous()
+                    refreshPlayback(true)
+                }
             })
             isActive = true
         }
@@ -41,8 +61,23 @@ class TtsPlaybackService : Service() {
                 stopSelf()
                 return START_NOT_STICKY
             }
-            ACTION_PAUSE -> refreshPlayback(false)
-            ACTION_PREVIOUS, ACTION_NEXT, ACTION_PLAY, ACTION_START -> refreshPlayback(true)
+            ACTION_PAUSE -> {
+                ttsController.pause()
+                refreshPlayback(false)
+            }
+            ACTION_PREVIOUS -> {
+                ttsController.previous()
+                refreshPlayback(true)
+            }
+            ACTION_NEXT -> {
+                ttsController.next()
+                refreshPlayback(true)
+            }
+            ACTION_PLAY -> {
+                ttsController.resume()
+                refreshPlayback(true)
+            }
+            ACTION_START -> refreshPlayback(true)
             else -> refreshPlayback(true)
         }
         return START_STICKY
@@ -105,19 +140,16 @@ class TtsPlaybackService : Service() {
     }
 
     private fun createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val manager = getSystemService(NotificationManager::class.java)
-            val channel = NotificationChannel(
-                CHANNEL_ID,
-                getString(R.string.tts_channel_name),
-                NotificationManager.IMPORTANCE_LOW
-            )
-            manager.createNotificationChannel(channel)
-        }
+        val manager = getSystemService(NotificationManager::class.java)
+        val channel = NotificationChannel(
+            CHANNEL_ID,
+            getString(R.string.tts_channel_name),
+            NotificationManager.IMPORTANCE_LOW
+        )
+        manager.createNotificationChannel(channel)
     }
 
-    private fun getColorCompat(): Int =
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) getColor(R.color.notification_color) else 0
+    private fun getColorCompat(): Int = getColor(R.color.notification_color)
 
     companion object {
         const val ACTION_START = "com.astus.reader.tts.START"
